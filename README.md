@@ -12,8 +12,10 @@
 
 ## Как использовать?  
 1. Помести изображения в папку `Images/`.  
-2. Положи `watermark.png` туда же.  
-3. Запусти программу – обработанные файлы появятся в `Images_watermarked/`.  
+2. Положи `watermark.png` туда же.
+3. Запусти программу – обработанные файлы появятся в `Images_watermarked/`.
 
 ```go
+go mod init
+go mod tidy
 go run main.go
