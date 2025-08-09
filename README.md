@@ -27,7 +27,7 @@ Perfect for:
     set PATH=С:\MSYS2\mingw64\bin;%PATH% 
 4. Clone the repository and initialize:
    ```bash
-   git clone https://github.com/del1x/GoIMGtool.git
+    git clone https://github.com/del1x/GoIMGtool.git
     cd GoIMGtool
     go mod init
     go mod tidy
