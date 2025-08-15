@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/del1x/GoIMGtool/config"
 	"github.com/del1x/GoIMGtool/fileio"
 	"github.com/disintegration/imaging"
 )
@@ -17,9 +18,10 @@ type ProgressCallback func(current, total int)
 type ImageProcessor struct {
 	Watermark image.Image
 	OutputDir string
+	Config    *config.Config
 }
 
-func NewImageProcessor(watermarkPath string) (*ImageProcessor, error) {
+func NewImageProcessor(watermarkPath string, cfg *config.Config) (*ImageProcessor, error) {
 	watermark, err := fileio.LoadImage(watermarkPath)
 	if err != nil {
 		return nil, fmt.Errorf("error loading watermark: %v", err)
@@ -27,6 +29,7 @@ func NewImageProcessor(watermarkPath string) (*ImageProcessor, error) {
 	return &ImageProcessor{
 		Watermark: watermark,
 		OutputDir: "Images_watermarked",
+		Config:    cfg,
 	}, nil
 }
 

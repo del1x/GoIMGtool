@@ -1,6 +1,9 @@
 package gui
 
 import (
+	"strconv"
+
+	"github.com/del1x/GoIMGtool/config"
 	"github.com/del1x/GoIMGtool/processor"
 
 	"fyne.io/fyne/v2"
@@ -11,6 +14,8 @@ import (
 )
 
 func SetupGUI(w fyne.Window) {
+	cfg := config.DefaultConfig()
+
 	watermarkLabel := widget.NewLabel("Watermark file:")
 	watermarkEntry := widget.NewEntry()
 	watermarkEntry.SetPlaceHolder("Select watermark.png")
@@ -20,7 +25,7 @@ func SetupGUI(w fyne.Window) {
 	imageDirEntry.SetPlaceHolder("Select image folder")
 
 	formatLabel := widget.NewLabel("Output format:")
-	formatSelect := widget.NewSelect([]string{"png", "webp"}, func(s string) {})
+	formatSelect := widget.NewSelect([]string{"png", "webp", "jpg"}, func(s string) {})
 	formatSelect.SetSelected("png")
 
 	progress := widget.NewProgressBar()
@@ -46,13 +51,23 @@ func SetupGUI(w fyne.Window) {
 		dialog.Show()
 	})
 
+	qualityEntry := widget.NewEntry()
+	qualityEntry.SetText("80") // default value
+	qualityEntry.OnChanged = func(s string) {
+		if q, err := strconv.Atoi(s); err == nil {
+			cfg.Quality = q
+		}
+	}
+
 	processButton := widget.NewButton("Process", func() {
 		if watermarkEntry.Text == "" || imageDirEntry.Text == "" {
 			dialog.ShowInformation("Error", "Please select a watermark file and image folder!", w)
 			return
 		}
 		progress.SetValue(0)
-		processor, err := processor.NewImageProcessor(watermarkEntry.Text)
+		cfg := config.DefaultConfig()
+		cfg.OutputFormat = formatSelect.Selected
+		processor, err := processor.NewImageProcessor(watermarkEntry.Text, cfg)
 		if err != nil {
 			dialog.ShowInformation("Error", err.Error(), w)
 			return
@@ -72,6 +87,7 @@ func SetupGUI(w fyne.Window) {
 		watermarkLabel, watermarkEntry, fileButton,
 		imageDirLabel, imageDirEntry, folderButton,
 		formatLabel, formatSelect,
+		widget.NewLabel("Quality (1-100):"), qualityEntry,
 		processButton, progress,
 	)
 
