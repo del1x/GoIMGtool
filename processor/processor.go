@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/del1x/GoIMGtool/fileio"
 	"github.com/disintegration/imaging"
-	"github.com/kolesa-team/go-webp/encoder"
 )
 
 type ProgressCallback func(current, total int)
@@ -20,15 +20,18 @@ type ImageProcessor struct {
 }
 
 func NewImageProcessor(watermarkPath string) (*ImageProcessor, error) {
-	watermark, err := imaging.Open(watermarkPath)
+	watermark, err := fileio.LoadImage(watermarkPath)
 	if err != nil {
 		return nil, fmt.Errorf("error loading watermark: %v", err)
 	}
-	return &ImageProcessor{Watermark: watermark, OutputDir: "Images_watermarked"}, nil
+	return &ImageProcessor{
+		Watermark: watermark,
+		OutputDir: "Images_watermarked",
+	}, nil
 }
 
-func (p *ImageProcessor) ProcessFolder(imageDir string, outputFormat string, progress ProgressCallback) error {
-	files, err := os.ReadDir(imageDir)
+func (p *ImageProcessor) ProcessFolder(imageDir, outputFormat string, progress ProgressCallback) error {
+	files, err := fileio.ReadDir(imageDir)
 	if err != nil {
 		return fmt.Errorf("error reading directory: %v", err)
 	}
@@ -36,10 +39,8 @@ func (p *ImageProcessor) ProcessFolder(imageDir string, outputFormat string, pro
 	if progress != nil {
 		progress(0, total)
 	}
-	fmt.Printf("Found %d files in %s/: %v\n", total, imageDir, listFiles(files))
-	err = os.Mkdir(p.OutputDir, 0755)
-	if err != nil && !os.IsExist(err) {
-		return fmt.Errorf("error creating directory: %v", err)
+	if err := fileio.CreateDir(p.OutputDir); err != nil {
+		return fmt.Errorf("error creating output directory: %v", err)
 	}
 	for i, file := range files {
 		if progress != nil {
@@ -66,8 +67,7 @@ func (p *ImageProcessor) processFile(imageDir string, file os.DirEntry, outputFo
 		fmt.Printf("Skipping file %s: unsupported extension %s\n", file.Name(), ext)
 		return nil
 	}
-	fmt.Printf("Processing image: %s\n", file.Name())
-	img, err := loadImage(filepath.Join(imageDir, file.Name()))
+	img, err := fileio.LoadImage(filepath.Join(imageDir, file.Name()))
 	if err != nil {
 		return err
 	}
@@ -79,15 +79,7 @@ func (p *ImageProcessor) processFile(imageDir string, file os.DirEntry, outputFo
 	if err != nil {
 		return err
 	}
-	return saveImage(result, file.Name(), outputFormat)
-}
-
-func loadImage(path string) (image.Image, error) {
-	img, err := imaging.Open(path)
-	if err != nil {
-		return nil, fmt.Errorf("error loading image: %v", err)
-	}
-	return img, nil
+	return fileio.SaveImage(result, filepath.Join(p.OutputDir, file.Name()), outputFormat)
 }
 
 func resizeImage(img image.Image) (image.Image, error) {
@@ -95,9 +87,7 @@ func resizeImage(img image.Image) (image.Image, error) {
 	height := img.Bounds().Dy()
 	if width > 1200 || height > 1200 {
 		img = imaging.Fit(img, 1200, 1200, imaging.Lanczos)
-		width = img.Bounds().Dx()
-		height = img.Bounds().Dy()
-		fmt.Printf("Resized image to %dx%d\n", width, height)
+		fmt.Printf("Resized image to %dx%d\n", img.Bounds().Dx(), img.Bounds().Dy())
 	}
 	return img, nil
 }
@@ -111,45 +101,4 @@ func applyWatermark(img, watermark image.Image) (image.Image, error) {
 	draw.Draw(result, img.Bounds(), img, image.Point{0, 0}, draw.Src)
 	draw.Draw(result, transparentWatermark.Bounds(), transparentWatermark, image.Point{0, 0}, draw.Over)
 	return result, nil
-}
-
-func saveImage(img image.Image, filename, outputFormat string) error {
-	base := strings.TrimSuffix(filename, filepath.Ext(filename))
-	var outputPath string
-	if outputFormat == "webp" {
-		outputPath = filepath.Join("Images_watermarked", base+".webp")
-		webpFile, err := os.Create(outputPath)
-		if err != nil {
-			return fmt.Errorf("error creating WebP file: %v", err)
-		}
-		defer webpFile.Close()
-		options, err := encoder.NewLosslessEncoderOptions(encoder.PresetDefault, 6)
-		if err != nil {
-			return fmt.Errorf("error creating encoder options: %v", err)
-		}
-		enc, err := encoder.NewEncoder(img, options)
-		if err != nil {
-			return fmt.Errorf("error creating encoder: %v", err)
-		}
-		err = enc.Encode(webpFile)
-		if err != nil {
-			return fmt.Errorf("error encoding WebP: %v", err)
-		}
-	} else {
-		outputPath = filepath.Join("Images_watermarked", base+".png")
-		err := imaging.Save(img, outputPath)
-		if err != nil {
-			return fmt.Errorf("error saving image: %v", err)
-		}
-	}
-	fmt.Printf("Processed image: %s\n", outputPath)
-	return nil
-}
-
-func listFiles(files []os.DirEntry) []string {
-	names := make([]string, len(files))
-	for i, file := range files {
-		names[i] = file.Name()
-	}
-	return names
 }

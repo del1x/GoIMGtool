@@ -1,4 +1,4 @@
-module watermark
+module github.com/del1x/GoIMGtool
 
 go 1.24.6
 
