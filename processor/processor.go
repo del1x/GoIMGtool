@@ -82,7 +82,7 @@ func (p *ImageProcessor) processFile(imageDir string, file os.DirEntry, outputFo
 	if err != nil {
 		return err
 	}
-	return fileio.SaveImage(result, filepath.Join(p.OutputDir, file.Name()), outputFormat)
+	return fileio.NewImageProcessor().SaveImage(result, filepath.Join(p.OutputDir, file.Name()), outputFormat, p.Config)
 }
 
 func resizeImage(img image.Image) (image.Image, error) {
@@ -96,12 +96,20 @@ func resizeImage(img image.Image) (image.Image, error) {
 }
 
 func applyWatermark(img, watermark image.Image) (image.Image, error) {
-	watermarkResized := imaging.Resize(watermark, img.Bounds().Dx(), img.Bounds().Dy(), imaging.Lanczos)
-	bounds := watermarkResized.Bounds()
+	var watermarkProcessed image.Image
+	if watermark.Bounds().Dx() > img.Bounds().Dx() || watermark.Bounds().Dy() > img.Bounds().Dy() {
+		watermarkProcessed = imaging.CropCenter(watermark, img.Bounds().Dx(), img.Bounds().Dy())
+	} else {
+		watermarkProcessed = imaging.Resize(watermark, img.Bounds().Dx(), img.Bounds().Dy(), imaging.Lanczos)
+	}
+
+	bounds := watermarkProcessed.Bounds()
 	transparentWatermark := image.NewNRGBA(bounds)
-	draw.Draw(transparentWatermark, bounds, watermarkResized, image.Point{0, 0}, draw.Src)
+	draw.Draw(transparentWatermark, bounds, watermarkProcessed, image.Point{0, 0}, draw.Src)
+
 	result := image.NewNRGBA(img.Bounds())
 	draw.Draw(result, img.Bounds(), img, image.Point{0, 0}, draw.Src)
 	draw.Draw(result, transparentWatermark.Bounds(), transparentWatermark, image.Point{0, 0}, draw.Over)
+
 	return result, nil
 }

@@ -25,7 +25,9 @@ func SetupGUI(w fyne.Window) {
 	imageDirEntry.SetPlaceHolder("Select image folder")
 
 	formatLabel := widget.NewLabel("Output format:")
-	formatSelect := widget.NewSelect([]string{"png", "webp", "jpg"}, func(s string) {})
+	formatSelect := widget.NewSelect([]string{"png", "webp", "jpg"}, func(s string) {
+		cfg.OutputFormat = s
+	})
 	formatSelect.SetSelected("png")
 
 	progress := widget.NewProgressBar()
@@ -52,10 +54,17 @@ func SetupGUI(w fyne.Window) {
 	})
 
 	qualityEntry := widget.NewEntry()
-	qualityEntry.SetText("80") // default value
+	qualityEntry.SetText(strconv.Itoa(cfg.Quality)) // old value
 	qualityEntry.OnChanged = func(s string) {
 		if q, err := strconv.Atoi(s); err == nil {
-			cfg.Quality = q
+			if q >= 1 && q <= 100 { // range
+				cfg.Quality = q
+				qualityEntry.SetText(strconv.Itoa(q))
+			} else {
+				qualityEntry.SetText(strconv.Itoa(cfg.Quality)) // back old value
+			}
+		} else {
+			qualityEntry.SetText(strconv.Itoa(cfg.Quality)) // uncorect input
 		}
 	}
 
@@ -65,14 +74,12 @@ func SetupGUI(w fyne.Window) {
 			return
 		}
 		progress.SetValue(0)
-		cfg := config.DefaultConfig()
-		cfg.OutputFormat = formatSelect.Selected
 		processor, err := processor.NewImageProcessor(watermarkEntry.Text, cfg)
 		if err != nil {
 			dialog.ShowInformation("Error", err.Error(), w)
 			return
 		}
-		err = processor.ProcessFolder(imageDirEntry.Text, formatSelect.Selected, func(current, total int) {
+		err = processor.ProcessFolder(imageDirEntry.Text, cfg.OutputFormat, func(current, total int) {
 			if total > 0 {
 				progress.SetValue(float64(current) / float64(total))
 				w.Canvas().Refresh(progress)
