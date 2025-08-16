@@ -21,14 +21,17 @@ func NewImageProcessor() *ImageProcessor {
 }
 
 func (p *ImageProcessor) SaveImage(img image.Image, outputPath, outputFormat string, cfg *config.Config) error {
+	fmt.Println("Processing image with format:", outputFormat)
 	base := strings.TrimSuffix(outputPath, filepath.Ext(outputPath))
 
 	img = HandleImageResize(img)
+	fmt.Println("Image resized, type:", fmt.Sprintf("%T", img))
 
 	bestQuality, err := OptimizeQuality(img, outputFormat, base, p.TargetSizeKB)
 	if err != nil {
-		return err
+		return fmt.Errorf("error optimizing quality: %v", err)
 	}
+	fmt.Println("Optimized quality:", bestQuality)
 
 	if outputFormat == "webp" {
 		outputPath = base + ".webp"
@@ -40,11 +43,13 @@ func (p *ImageProcessor) SaveImage(img image.Image, outputPath, outputFormat str
 		if err := ManageExif(img, outputPath, bestQuality); err != nil {
 			return err
 		}
-	} else {
+	} else if outputFormat == "png" {
 		outputPath = base + ".png"
 		if err := SaveImagePNG(img, outputPath); err != nil {
 			return err
 		}
+	} else {
+		return fmt.Errorf("unsupported format: %s", outputFormat)
 	}
 
 	fileInfo, err := os.Stat(outputPath)

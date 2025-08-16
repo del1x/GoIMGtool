@@ -1,0 +1,6 @@
+Images_watermarked/
+*.png
+*.jpg
+*.webp
+__pycache__/
+*.pyc

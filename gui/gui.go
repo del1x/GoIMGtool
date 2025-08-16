@@ -80,10 +80,12 @@ func SetupGUI(w fyne.Window) {
 			return
 		}
 		err = processor.ProcessFolder(imageDirEntry.Text, cfg.OutputFormat, func(current, total int) {
-			if total > 0 {
-				progress.SetValue(float64(current) / float64(total))
-				w.Canvas().Refresh(progress)
-			}
+			fyne.Do(func() {
+				if total > 0 {
+					progress.SetValue(float64(current) / float64(total))
+					w.Canvas().Refresh(progress)
+				}
+			})
 		})
 		if err != nil {
 			dialog.ShowInformation("Error", err.Error(), w)

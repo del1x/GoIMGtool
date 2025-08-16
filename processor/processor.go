@@ -7,7 +7,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
+	"fyne.io/fyne/v2"
 	"github.com/del1x/GoIMGtool/config"
 	"github.com/del1x/GoIMGtool/fileio"
 	"github.com/disintegration/imaging"
@@ -34,58 +37,80 @@ func NewImageProcessor(watermarkPath string, cfg *config.Config) (*ImageProcesso
 }
 
 func (p *ImageProcessor) ProcessFolder(imageDir, outputFormat string, progress ProgressCallback) error {
+	startTime := time.Now()
 	files, err := fileio.ReadDir(imageDir)
 	if err != nil {
 		return fmt.Errorf("error reading directory: %v", err)
 	}
 	total := len(files)
+
+	if err := p.setupOutputDir(); err != nil {
+		return err
+	}
+
+	const maxGoroutines = 4
+	var wg sync.WaitGroup
+	semaphore := make(chan struct{}, maxGoroutines)
+	current := 0
+
+	for _, file := range files {
+		wg.Add(1)
+		semaphore <- struct{}{}
+
+		go func(f os.DirEntry) {
+			defer wg.Done()
+			defer func() { <-semaphore }()
+
+			if err := p.processFile(imageDir, f, outputFormat); err != nil {
+				fmt.Printf("Error processing file %s: %v\n", f.Name(), err)
+			}
+			current++
+			if progress != nil {
+				fyne.Do(func() {
+					progress(current, total)
+				})
+			}
+		}(file)
+	}
+
+	wg.Wait()
 	if progress != nil {
-		progress(0, total)
+		fyne.Do(func() {
+			progress(total, total)
+		})
 	}
-	if err := fileio.CreateDir(p.OutputDir); err != nil {
-		return fmt.Errorf("error creating output directory: %v", err)
-	}
-	for i, file := range files {
-		if progress != nil {
-			progress(i+1, total)
-		}
-		if err := p.processFile(imageDir, file, outputFormat); err != nil {
-			fmt.Printf("Error processing file %s: %v\n", file.Name(), err)
-			continue
-		}
-	}
-	if progress != nil {
-		progress(total, total)
-	}
+
+	elapsed := time.Since(startTime)
+	fmt.Printf("Processing completed in %v\n", elapsed)
 	return nil
 }
 
 func (p *ImageProcessor) processFile(imageDir string, file os.DirEntry, outputFormat string) error {
-	if file.Name() == filepath.Base(filepath.Join(imageDir, "watermark.png")) {
+	if p.isWatermarkFile(file, imageDir) {
 		fmt.Println("Skipping watermark.png")
 		return nil
 	}
-	ext := strings.ToLower(filepath.Ext(file.Name()))
-	if ext != ".png" && ext != ".jpg" && ext != ".jpeg" && ext != ".webp" {
-		fmt.Printf("Skipping file %s: unsupported extension %s\n", file.Name(), ext)
+	if !p.isSupportedExtension(file) {
+		fmt.Printf("Skipping file %s: unsupported extension %s\n", file.Name(), filepath.Ext(file.Name()))
 		return nil
 	}
+
 	img, err := fileio.LoadImage(filepath.Join(imageDir, file.Name()))
 	if err != nil {
 		return err
 	}
-	img, err = resizeImage(img)
+	img, err = p.resizeImage(img)
 	if err != nil {
 		return err
 	}
-	result, err := applyWatermark(img, p.Watermark)
+	result, err := p.applyWatermark(img)
 	if err != nil {
 		return err
 	}
 	return fileio.NewImageProcessor().SaveImage(result, filepath.Join(p.OutputDir, file.Name()), outputFormat, p.Config)
 }
 
-func resizeImage(img image.Image) (image.Image, error) {
+func (p *ImageProcessor) resizeImage(img image.Image) (image.Image, error) {
 	width := img.Bounds().Dx()
 	height := img.Bounds().Dy()
 	if width > 1200 || height > 1200 {
@@ -95,21 +120,40 @@ func resizeImage(img image.Image) (image.Image, error) {
 	return img, nil
 }
 
-func applyWatermark(img, watermark image.Image) (image.Image, error) {
-	var watermarkProcessed image.Image
-	if watermark.Bounds().Dx() > img.Bounds().Dx() || watermark.Bounds().Dy() > img.Bounds().Dy() {
-		watermarkProcessed = imaging.CropCenter(watermark, img.Bounds().Dx(), img.Bounds().Dy())
-	} else {
-		watermarkProcessed = imaging.Resize(watermark, img.Bounds().Dx(), img.Bounds().Dy(), imaging.Lanczos)
-	}
-
-	bounds := watermarkProcessed.Bounds()
+func (p *ImageProcessor) applyWatermark(img image.Image) (image.Image, error) {
+	watermark := p.prepareWatermark(img)
+	bounds := watermark.Bounds()
 	transparentWatermark := image.NewNRGBA(bounds)
-	draw.Draw(transparentWatermark, bounds, watermarkProcessed, image.Point{0, 0}, draw.Src)
+	draw.Draw(transparentWatermark, bounds, watermark, image.Point{0, 0}, draw.Src)
 
 	result := image.NewNRGBA(img.Bounds())
 	draw.Draw(result, img.Bounds(), img, image.Point{0, 0}, draw.Src)
 	draw.Draw(result, transparentWatermark.Bounds(), transparentWatermark, image.Point{0, 0}, draw.Over)
-
 	return result, nil
+}
+
+func (p *ImageProcessor) setupOutputDir() error {
+	return fileio.CreateDir(p.OutputDir)
+}
+
+func (p *ImageProcessor) isWatermarkFile(file os.DirEntry, imageDir string) bool {
+	return file.Name() == filepath.Base(filepath.Join(imageDir, "watermark.png"))
+}
+
+func (p *ImageProcessor) isSupportedExtension(file os.DirEntry) bool {
+	ext := strings.ToLower(filepath.Ext(file.Name()))
+	return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".webp"
+}
+
+func (p *ImageProcessor) reportProgress(progress ProgressCallback, current, total int) {
+	if progress != nil {
+		progress(current, total)
+	}
+}
+
+func (p *ImageProcessor) prepareWatermark(img image.Image) image.Image {
+	if p.Watermark.Bounds().Dx() > img.Bounds().Dx() || p.Watermark.Bounds().Dy() > img.Bounds().Dy() {
+		return imaging.CropCenter(p.Watermark, img.Bounds().Dx(), img.Bounds().Dy())
+	}
+	return imaging.Resize(p.Watermark, img.Bounds().Dx(), img.Bounds().Dy(), imaging.Lanczos)
 }

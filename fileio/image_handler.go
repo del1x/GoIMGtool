@@ -3,7 +3,10 @@ package fileio
 import (
 	"fmt"
 	"image"
+	"image/png"
 	"os"
+
+	"image/draw"
 
 	"github.com/disintegration/imaging"
 	"github.com/kolesa-team/go-webp/encoder"
@@ -35,5 +38,22 @@ func SaveImageWebP(img image.Image, outputPath string, quality int) error {
 }
 
 func SaveImagePNG(img image.Image, outputPath string) error {
-	return imaging.Save(img, outputPath)
+	fmt.Println("Starting PNG encoding for:", outputPath)
+	pngFile, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("error creating PNG file: %v", err)
+	}
+	defer pngFile.Close()
+
+	fmt.Printf("Input image type: %T\n", img)
+
+	imgNRGBA := image.NewNRGBA(img.Bounds())
+	draw.Draw(imgNRGBA, imgNRGBA.Bounds(), img, image.Point{0, 0}, draw.Over)
+	fmt.Println("Image converted to NRGBA")
+
+	if err := png.Encode(pngFile, imgNRGBA); err != nil {
+		return fmt.Errorf("error encoding PNG %s: %v", outputPath, err)
+	}
+	fmt.Println("PNG encoding successful for:", outputPath)
+	return nil
 }

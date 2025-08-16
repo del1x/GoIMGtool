@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/jpeg"
+	"image/png"
 	"os"
 
 	"github.com/kolesa-team/go-webp/encoder"
@@ -39,6 +40,15 @@ func saveAndGetSize(img image.Image, quality int, format, path string) (int, err
 		if err = enc.Encode(file); err != nil {
 			return 0, fmt.Errorf("error encoding WebP: %v", err)
 		}
+	} else if format == "png" {
+		file, err = os.Create(path)
+		if err != nil {
+			return 0, fmt.Errorf("error creating PNG file: %v", err)
+		}
+		defer file.Close()
+		if err := png.Encode(file, img); err != nil {
+			return 0, fmt.Errorf("error encoding PNG: %v", err)
+		}
 	} else {
 		return 0, fmt.Errorf("unsupported format")
 	}
@@ -50,38 +60,21 @@ func saveAndGetSize(img image.Image, quality int, format, path string) (int, err
 }
 
 func OptimizeQuality(img image.Image, outputFormat, base string, targetSizeKB int) (int, error) {
-	var low, high, bestQuality int
-	low, high = 1, 100
-	bestQuality = 20
-	for low <= high {
-		mid := (low + high) / 2
-		size, err := saveAndGetSize(img, mid, outputFormat, base+"_"+fmt.Sprintf("%d", mid)+"."+outputFormat)
+	if outputFormat == "png" {
+		return 80, nil
+	}
+
+	for quality := 100; quality >= 1; quality-- {
+		size, err := saveAndGetSize(img, quality, outputFormat, base+"_"+fmt.Sprintf("%d", quality)+"."+outputFormat)
 		if err != nil {
 			return 0, err
 		}
-		fmt.Printf("Testing quality %d, size %d KB\n", mid, size)
+		fmt.Printf("Testing quality %d, size %d KB\n", quality, size)
 		if size <= targetSizeKB {
-			bestQuality = mid
-			low = mid + 1
-		} else {
-			high = mid - 1
+			os.Remove(base + "_" + fmt.Sprintf("%d", quality) + "." + outputFormat)
+			return quality, nil
 		}
-		os.Remove(base + "_" + fmt.Sprintf("%d", mid) + "." + outputFormat)
+		os.Remove(base + "_" + fmt.Sprintf("%d", quality) + "." + outputFormat)
 	}
-	for i := bestQuality; i <= 100; i++ {
-		size, err := saveAndGetSize(img, i, outputFormat, base+"_"+fmt.Sprintf("%d", i)+"."+outputFormat)
-		if err != nil {
-			return 0, err
-		}
-		if size <= targetSizeKB {
-			bestQuality = i
-		} else {
-			break
-		}
-		os.Remove(base + "_" + fmt.Sprintf("%d", i) + "." + outputFormat)
-	}
-	for i := 1; i <= 100; i++ {
-		os.Remove(base + "_" + fmt.Sprintf("%d", i) + "." + outputFormat)
-	}
-	return bestQuality, nil
+	return 1, fmt.Errorf("could not optimize quality for %s to fit %d KB", outputFormat, targetSizeKB)
 }
