@@ -1,20 +1,42 @@
 package gui
 
 import (
+	"image"
+	"os"
 	"strconv"
-
-	"github.com/del1x/GoIMGtool/config"
-	"github.com/del1x/GoIMGtool/processor"
 
 	"fyne.io/fyne/v2"
 	"fyne.io/fyne/v2/container"
 	"fyne.io/fyne/v2/dialog"
 	"fyne.io/fyne/v2/storage"
 	"fyne.io/fyne/v2/widget"
+	"github.com/del1x/GoIMGtool/config"
+	"github.com/del1x/GoIMGtool/fileio"
+	"github.com/del1x/GoIMGtool/processor"
 )
+
+type fileioHandler struct{}
+
+func (f *fileioHandler) LoadImage(path string) (image.Image, error) {
+	return fileio.LoadImage(path)
+}
+
+func (f *fileioHandler) SaveImage(img image.Image, path, format string, cfg *config.Config) error {
+	return fileio.NewImageProcessor().SaveImage(img, path, format, cfg)
+}
+
+func (f *fileioHandler) CreateDir(path string) error {
+	return fileio.CreateDir(path)
+}
+
+func (f *fileioHandler) ReadDir(path string) ([]os.DirEntry, error) {
+	return fileio.ReadDir(path)
+}
 
 func SetupGUI(w fyne.Window) {
 	cfg := config.DefaultConfig()
+
+	fileHandler := &fileioHandler{}
 
 	watermarkLabel := widget.NewLabel("Watermark file:")
 	watermarkEntry := widget.NewEntry()
@@ -54,17 +76,17 @@ func SetupGUI(w fyne.Window) {
 	})
 
 	qualityEntry := widget.NewEntry()
-	qualityEntry.SetText(strconv.Itoa(cfg.Quality)) // old value
+	qualityEntry.SetText(strconv.Itoa(cfg.Quality))
 	qualityEntry.OnChanged = func(s string) {
 		if q, err := strconv.Atoi(s); err == nil {
-			if q >= 1 && q <= 100 { // range
+			if q >= 1 && q <= 100 {
 				cfg.Quality = q
 				qualityEntry.SetText(strconv.Itoa(q))
 			} else {
-				qualityEntry.SetText(strconv.Itoa(cfg.Quality)) // back old value
+				qualityEntry.SetText(strconv.Itoa(cfg.Quality))
 			}
 		} else {
-			qualityEntry.SetText(strconv.Itoa(cfg.Quality)) // uncorect input
+			qualityEntry.SetText(strconv.Itoa(cfg.Quality))
 		}
 	}
 
@@ -74,7 +96,7 @@ func SetupGUI(w fyne.Window) {
 			return
 		}
 		progress.SetValue(0)
-		processor, err := processor.NewImageProcessor(watermarkEntry.Text, cfg)
+		processor, err := processor.NewImageProcessor(watermarkEntry.Text, cfg, fileHandler)
 		if err != nil {
 			dialog.ShowInformation("Error", err.Error(), w)
 			return

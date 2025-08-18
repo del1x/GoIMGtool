@@ -12,33 +12,41 @@ import (
 
 	"fyne.io/fyne/v2"
 	"github.com/del1x/GoIMGtool/config"
-	"github.com/del1x/GoIMGtool/fileio"
 	"github.com/disintegration/imaging"
 )
 
 type ProgressCallback func(current, total int)
 
-type ImageProcessor struct {
-	Watermark image.Image
-	OutputDir string
-	Config    *config.Config
+type FileHandler interface {
+	LoadImage(path string) (image.Image, error)
+	SaveImage(img image.Image, path, format string, cfg *config.Config) error
+	CreateDir(path string) error
+	ReadDir(path string) ([]os.DirEntry, error)
 }
 
-func NewImageProcessor(watermarkPath string, cfg *config.Config) (*ImageProcessor, error) {
-	watermark, err := fileio.LoadImage(watermarkPath)
+type ImageProcessor struct {
+	Watermark   image.Image
+	OutputDir   string
+	Config      *config.Config
+	FileHandler FileHandler
+}
+
+func NewImageProcessor(watermarkPath string, cfg *config.Config, fileHandler FileHandler) (*ImageProcessor, error) {
+	watermark, err := fileHandler.LoadImage(watermarkPath)
 	if err != nil {
 		return nil, fmt.Errorf("error loading watermark: %v", err)
 	}
 	return &ImageProcessor{
-		Watermark: watermark,
-		OutputDir: "Images_watermarked",
-		Config:    cfg,
+		Watermark:   watermark,
+		OutputDir:   "Images_watermarked",
+		Config:      cfg,
+		FileHandler: fileHandler,
 	}, nil
 }
 
 func (p *ImageProcessor) ProcessFolder(imageDir, outputFormat string, progress ProgressCallback) error {
 	startTime := time.Now()
-	files, err := fileio.ReadDir(imageDir)
+	files, err := p.FileHandler.ReadDir(imageDir)
 	if err != nil {
 		return fmt.Errorf("error reading directory: %v", err)
 	}
@@ -95,7 +103,7 @@ func (p *ImageProcessor) processFile(imageDir string, file os.DirEntry, outputFo
 		return nil
 	}
 
-	img, err := fileio.LoadImage(filepath.Join(imageDir, file.Name()))
+	img, err := p.FileHandler.LoadImage(filepath.Join(imageDir, file.Name()))
 	if err != nil {
 		return err
 	}
@@ -107,7 +115,7 @@ func (p *ImageProcessor) processFile(imageDir string, file os.DirEntry, outputFo
 	if err != nil {
 		return err
 	}
-	return fileio.NewImageProcessor().SaveImage(result, filepath.Join(p.OutputDir, file.Name()), outputFormat, p.Config)
+	return p.FileHandler.SaveImage(result, filepath.Join(p.OutputDir, file.Name()), outputFormat, p.Config)
 }
 
 func (p *ImageProcessor) resizeImage(img image.Image) (image.Image, error) {
@@ -133,7 +141,7 @@ func (p *ImageProcessor) applyWatermark(img image.Image) (image.Image, error) {
 }
 
 func (p *ImageProcessor) setupOutputDir() error {
-	return fileio.CreateDir(p.OutputDir)
+	return p.FileHandler.CreateDir(p.OutputDir)
 }
 
 func (p *ImageProcessor) isWatermarkFile(file os.DirEntry, imageDir string) bool {
@@ -143,12 +151,6 @@ func (p *ImageProcessor) isWatermarkFile(file os.DirEntry, imageDir string) bool
 func (p *ImageProcessor) isSupportedExtension(file os.DirEntry) bool {
 	ext := strings.ToLower(filepath.Ext(file.Name()))
 	return ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".webp"
-}
-
-func (p *ImageProcessor) reportProgress(progress ProgressCallback, current, total int) {
-	if progress != nil {
-		progress(current, total)
-	}
 }
 
 func (p *ImageProcessor) prepareWatermark(img image.Image) image.Image {
