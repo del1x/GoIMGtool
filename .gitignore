@@ -4,3 +4,4 @@ Images_watermarked/
 *.webp
 __pycache__/
 *.pyc
+test_images/
