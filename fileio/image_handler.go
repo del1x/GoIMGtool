@@ -8,12 +8,13 @@ import (
 
 	"image/draw"
 
+	"github.com/del1x/GoIMGtool/config"
 	"github.com/disintegration/imaging"
 	"github.com/kolesa-team/go-webp/encoder"
 )
 
-func HandleImageResize(img image.Image) image.Image {
-	return imaging.Fit(img, 1200, 1200, imaging.Lanczos)
+func HandleImageResize(img image.Image, cfg *config.Config) image.Image {
+	return imaging.Fit(img, cfg.MaxWidth, cfg.MaxHeight, imaging.Lanczos)
 }
 
 func SaveImageWebP(img image.Image, outputPath string, quality int) error {
@@ -22,7 +23,7 @@ func SaveImageWebP(img image.Image, outputPath string, quality int) error {
 		return fmt.Errorf("error creating WebP file: %v", err)
 	}
 	defer webpFile.Close()
-	qualityFloat := float32(quality) / 100.0
+	qualityFloat := float32(quality) // Убрано деление на 100
 	options, err := encoder.NewLossyEncoderOptions(encoder.PresetPhoto, qualityFloat)
 	if err != nil {
 		return fmt.Errorf("error creating encoder options: %v", err)

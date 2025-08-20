@@ -28,7 +28,7 @@ func saveAndGetSize(img image.Image, quality int, format, path string) (int, err
 			return 0, fmt.Errorf("error creating WebP file: %v", err)
 		}
 		defer file.Close()
-		qualityFloat := float32(quality) / 100.0
+		qualityFloat := float32(quality)
 		options, err := encoder.NewLossyEncoderOptions(encoder.PresetPhoto, qualityFloat)
 		if err != nil {
 			return 0, fmt.Errorf("error creating encoder options: %v", err)
@@ -64,17 +64,30 @@ func OptimizeQuality(img image.Image, outputFormat, base string, targetSizeKB in
 		return 80, nil
 	}
 
-	for quality := 100; quality >= 1; quality-- {
-		size, err := saveAndGetSize(img, quality, outputFormat, base+"_"+fmt.Sprintf("%d", quality)+"."+outputFormat)
+	low := 1
+	high := 100
+	bestQuality := 0
+
+	for low <= high {
+		mid := low + (high-low)/2
+		path := base + "_" + fmt.Sprintf("%d", mid) + "." + outputFormat
+		size, err := saveAndGetSize(img, mid, outputFormat, path)
 		if err != nil {
+			os.Remove(path)
 			return 0, err
 		}
-		fmt.Printf("Testing quality %d, size %d KB\n", quality, size)
+		fmt.Printf("Testing quality %d, size %d KB\n", mid, size)
 		if size <= targetSizeKB {
-			os.Remove(base + "_" + fmt.Sprintf("%d", quality) + "." + outputFormat)
-			return quality, nil
+			bestQuality = mid
+			low = mid + 1
+		} else {
+			high = mid - 1
 		}
-		os.Remove(base + "_" + fmt.Sprintf("%d", quality) + "." + outputFormat)
+		os.Remove(path)
 	}
-	return 1, fmt.Errorf("could not optimize quality for %s to fit %d KB", outputFormat, targetSizeKB)
+
+	if bestQuality == 0 {
+		return 1, fmt.Errorf("could not optimize quality for %s to fit %d KB", outputFormat, targetSizeKB)
+	}
+	return bestQuality, nil
 }

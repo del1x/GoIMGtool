@@ -11,11 +11,13 @@ import (
 	"time"
 
 	"fyne.io/fyne/v2"
+	"fyne.io/fyne/v2/canvas"
 	"github.com/del1x/GoIMGtool/config"
+	"github.com/del1x/GoIMGtool/fileio"
 	"github.com/disintegration/imaging"
 )
 
-type ProgressCallback func(current, total int)
+type ProgressCallback func(current, total int, img *canvas.Image, fileName string)
 
 type FileHandler interface {
 	LoadImage(path string) (image.Image, error)
@@ -25,10 +27,11 @@ type FileHandler interface {
 }
 
 type ImageProcessor struct {
-	Watermark   image.Image
-	OutputDir   string
-	Config      *config.Config
-	FileHandler FileHandler
+	Watermark     image.Image
+	OutputDir     string
+	Config        *config.Config
+	WatermarkMode string // "crop" или "resize"
+	FileHandler   FileHandler
 }
 
 func NewImageProcessor(watermarkPath string, cfg *config.Config, fileHandler FileHandler) (*ImageProcessor, error) {
@@ -36,11 +39,15 @@ func NewImageProcessor(watermarkPath string, cfg *config.Config, fileHandler Fil
 	if err != nil {
 		return nil, fmt.Errorf("error loading watermark: %v", err)
 	}
+	if watermark == nil {
+		return nil, fmt.Errorf("watermark image is nil")
+	}
 	return &ImageProcessor{
-		Watermark:   watermark,
-		OutputDir:   "Images_watermarked",
-		Config:      cfg,
-		FileHandler: fileHandler,
+		Watermark:     watermark,
+		OutputDir:     "Images_watermarked",
+		Config:        cfg,
+		WatermarkMode: "crop", // По умолчанию, будет перезаписано из GUI
+		FileHandler:   fileHandler,
 	}, nil
 }
 
@@ -69,13 +76,16 @@ func (p *ImageProcessor) ProcessFolder(imageDir, outputFormat string, progress P
 			defer wg.Done()
 			defer func() { <-semaphore }()
 
-			if err := p.processFile(imageDir, f, outputFormat); err != nil {
+			outputPath, err := p.processFile(imageDir, f, outputFormat)
+			if err != nil {
 				fmt.Printf("Error processing file %s: %v\n", f.Name(), err)
+				return
 			}
 			current++
 			if progress != nil {
 				fyne.Do(func() {
-					progress(current, total)
+					canvasImg := p.displayImageInUI(outputPath)
+					progress(current, total, canvasImg, f.Name())
 				})
 			}
 		}(file)
@@ -84,7 +94,7 @@ func (p *ImageProcessor) ProcessFolder(imageDir, outputFormat string, progress P
 	wg.Wait()
 	if progress != nil {
 		fyne.Do(func() {
-			progress(total, total)
+			progress(total, total, nil, "")
 		})
 	}
 
@@ -93,36 +103,44 @@ func (p *ImageProcessor) ProcessFolder(imageDir, outputFormat string, progress P
 	return nil
 }
 
-func (p *ImageProcessor) processFile(imageDir string, file os.DirEntry, outputFormat string) error {
+func (p *ImageProcessor) processFile(imageDir string, file os.DirEntry, outputFormat string) (string, error) {
 	if p.isWatermarkFile(file, imageDir) {
 		fmt.Println("Skipping watermark.png")
-		return nil
+		return "", nil
 	}
 	if !p.isSupportedExtension(file) {
 		fmt.Printf("Skipping file %s: unsupported extension %s\n", file.Name(), filepath.Ext(file.Name()))
-		return nil
+		return "", nil
 	}
 
 	img, err := p.FileHandler.LoadImage(filepath.Join(imageDir, file.Name()))
 	if err != nil {
-		return err
+		return "", fmt.Errorf("failed to load image %s: %v", file.Name(), err)
+	}
+	if img == nil {
+		return "", fmt.Errorf("loaded image for %s is nil", file.Name())
 	}
 	img, err = p.resizeImage(img)
 	if err != nil {
-		return err
+		return "", err
 	}
 	result, err := p.applyWatermark(img)
 	if err != nil {
-		return err
+		return "", err
 	}
-	return p.FileHandler.SaveImage(result, filepath.Join(p.OutputDir, file.Name()), outputFormat, p.Config)
+	outputPath := filepath.Join(p.OutputDir, strings.TrimSuffix(file.Name(), filepath.Ext(file.Name()))+"."+outputFormat)
+	if err := p.FileHandler.SaveImage(result, outputPath, outputFormat, p.Config); err != nil {
+		return "", err
+	}
+	fmt.Printf("Image saved to %s\n", outputPath)
+	return outputPath, nil
 }
 
 func (p *ImageProcessor) resizeImage(img image.Image) (image.Image, error) {
 	width := img.Bounds().Dx()
 	height := img.Bounds().Dy()
-	if width > 1200 || height > 1200 {
-		img = imaging.Fit(img, 1200, 1200, imaging.Lanczos)
+	if width > p.Config.MaxWidth || height > p.Config.MaxHeight {
+		img = fileio.HandleImageResize(img, p.Config)
 		fmt.Printf("Resized image to %dx%d\n", img.Bounds().Dx(), img.Bounds().Dy())
 	}
 	return img, nil
@@ -130,13 +148,13 @@ func (p *ImageProcessor) resizeImage(img image.Image) (image.Image, error) {
 
 func (p *ImageProcessor) applyWatermark(img image.Image) (image.Image, error) {
 	watermark := p.prepareWatermark(img)
-	bounds := watermark.Bounds()
+	bounds := img.Bounds()
 	transparentWatermark := image.NewNRGBA(bounds)
 	draw.Draw(transparentWatermark, bounds, watermark, image.Point{0, 0}, draw.Src)
 
-	result := image.NewNRGBA(img.Bounds())
-	draw.Draw(result, img.Bounds(), img, image.Point{0, 0}, draw.Src)
-	draw.Draw(result, transparentWatermark.Bounds(), transparentWatermark, image.Point{0, 0}, draw.Over)
+	result := image.NewNRGBA(bounds)
+	draw.Draw(result, bounds, img, image.Point{0, 0}, draw.Src)
+	draw.Draw(result, bounds, transparentWatermark, image.Point{0, 0}, draw.Over)
 	return result, nil
 }
 
@@ -154,8 +172,46 @@ func (p *ImageProcessor) isSupportedExtension(file os.DirEntry) bool {
 }
 
 func (p *ImageProcessor) prepareWatermark(img image.Image) image.Image {
-	if p.Watermark.Bounds().Dx() > img.Bounds().Dx() || p.Watermark.Bounds().Dy() > img.Bounds().Dy() {
-		return imaging.CropCenter(p.Watermark, img.Bounds().Dx(), img.Bounds().Dy())
+	wmBounds := p.Watermark.Bounds()
+	imgBounds := img.Bounds()
+
+	if p.WatermarkMode == "resize" {
+		return imaging.Resize(p.Watermark, imgBounds.Dx(), imgBounds.Dy(), imaging.Lanczos)
 	}
-	return imaging.Resize(p.Watermark, img.Bounds().Dx(), img.Bounds().Dy(), imaging.Lanczos)
+
+	// По умолчанию режим "crop"
+	if wmBounds.Dx() <= imgBounds.Dx() && wmBounds.Dy() <= imgBounds.Dy() {
+		return imaging.Resize(p.Watermark, imgBounds.Dx(), imgBounds.Dy(), imaging.Lanczos)
+	}
+
+	// Обрезаем центр водяного знака до размеров изображения
+	cropX := (wmBounds.Dx() - imgBounds.Dx()) / 2
+	cropY := (wmBounds.Dy() - imgBounds.Dy()) / 2
+	cropRect := image.Rect(cropX, cropY, cropX+imgBounds.Dx(), cropY+imgBounds.Dy())
+
+	croppedWatermark := imaging.Crop(p.Watermark, cropRect)
+	fmt.Printf("Cropped watermark to %dx%d from center\n", croppedWatermark.Bounds().Dx(), croppedWatermark.Bounds().Dy())
+
+	return croppedWatermark
+}
+
+func (p *ImageProcessor) displayImageInUI(path string) *canvas.Image {
+	if path == "" {
+		return nil
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		fmt.Printf("Error opening file: %v\n", err)
+		return nil
+	}
+	defer file.Close()
+	img, _, err := image.Decode(file)
+	if err != nil {
+		fmt.Printf("Error decoding image for UI: %v", err)
+		return nil
+	}
+	canvasImg := canvas.NewImageFromImage(img)
+	canvasImg.FillMode = canvas.ImageFillContain
+	canvasImg.SetMinSize(fyne.NewSize(200, 200))
+	return canvasImg
 }

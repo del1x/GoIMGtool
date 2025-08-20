@@ -24,7 +24,7 @@ func (p *ImageProcessor) SaveImage(img image.Image, outputPath, outputFormat str
 	fmt.Println("Processing image with format:", outputFormat)
 	base := strings.TrimSuffix(outputPath, filepath.Ext(outputPath))
 
-	img = HandleImageResize(img)
+	img = HandleImageResize(img, cfg)
 	fmt.Println("Image resized, type:", fmt.Sprintf("%T", img))
 
 	bestQuality, err := OptimizeQuality(img, outputFormat, base, p.TargetSizeKB)
