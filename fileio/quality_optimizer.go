@@ -1,62 +1,21 @@
 package fileio
 
 import (
+	"bytes"
 	"fmt"
 	"image"
-	"image/jpeg"
-	"image/png"
-	"os"
-
-	"github.com/kolesa-team/go-webp/encoder"
 )
 
-func saveAndGetSize(img image.Image, quality int, format, path string) (int, error) {
-	var file *os.File
-	var err error
-	if format == "jpg" {
-		file, err = os.Create(path)
-		if err != nil {
-			return 0, fmt.Errorf("error creating JPEG file: %v", err)
-		}
-		defer file.Close()
-		if err := jpeg.Encode(file, img, &jpeg.Options{Quality: quality}); err != nil {
-			return 0, fmt.Errorf("error encoding JPEG: %v", err)
-		}
-	} else if format == "webp" {
-		file, err = os.Create(path)
-		if err != nil {
-			return 0, fmt.Errorf("error creating WebP file: %v", err)
-		}
-		defer file.Close()
-		qualityFloat := float32(quality)
-		options, err := encoder.NewLossyEncoderOptions(encoder.PresetPhoto, qualityFloat)
-		if err != nil {
-			return 0, fmt.Errorf("error creating encoder options: %v", err)
-		}
-		enc, err := encoder.NewEncoder(img, options)
-		if err != nil {
-			return 0, fmt.Errorf("error creating encoder: %v", err)
-		}
-		if err = enc.Encode(file); err != nil {
-			return 0, fmt.Errorf("error encoding WebP: %v", err)
-		}
-	} else if format == "png" {
-		file, err = os.Create(path)
-		if err != nil {
-			return 0, fmt.Errorf("error creating PNG file: %v", err)
-		}
-		defer file.Close()
-		if err := png.Encode(file, img); err != nil {
-			return 0, fmt.Errorf("error encoding PNG: %v", err)
-		}
-	} else {
-		return 0, fmt.Errorf("unsupported format")
-	}
-	fileInfo, err := os.Stat(path)
+func saveAndGetSize(img image.Image, quality int, format string) (int, error) {
+	var buf bytes.Buffer
+	encoder, err := GetEncoder(format)
 	if err != nil {
-		return 0, fmt.Errorf("error getting file info: %v", err)
+		return 0, err
 	}
-	return int(fileInfo.Size() / 1024), nil
+	if err := encoder.Encode(img, &buf, quality); err != nil {
+		return 0, fmt.Errorf("error encoding %s: %v", format, err)
+	}
+	return buf.Len() / 1024, nil
 }
 
 func OptimizeQuality(img image.Image, outputFormat, base string, targetSizeKB int) (int, error) {
@@ -64,16 +23,11 @@ func OptimizeQuality(img image.Image, outputFormat, base string, targetSizeKB in
 		return 80, nil
 	}
 
-	low := 1
-	high := 100
-	bestQuality := 0
-
+	low, high, bestQuality := 1, 100, 0
 	for low <= high {
 		mid := low + (high-low)/2
-		path := base + "_" + fmt.Sprintf("%d", mid) + "." + outputFormat
-		size, err := saveAndGetSize(img, mid, outputFormat, path)
+		size, err := saveAndGetSize(img, mid, outputFormat)
 		if err != nil {
-			os.Remove(path)
 			return 0, err
 		}
 		fmt.Printf("Testing quality %d, size %d KB\n", mid, size)
@@ -83,7 +37,6 @@ func OptimizeQuality(img image.Image, outputFormat, base string, targetSizeKB in
 		} else {
 			high = mid - 1
 		}
-		os.Remove(path)
 	}
 
 	if bestQuality == 0 {

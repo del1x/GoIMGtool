@@ -23,6 +23,7 @@ func NewImageProcessor() *ImageProcessor {
 func (p *ImageProcessor) SaveImage(img image.Image, outputPath, outputFormat string, cfg *config.Config) error {
 	fmt.Println("Processing image with format:", outputFormat)
 	base := strings.TrimSuffix(outputPath, filepath.Ext(outputPath))
+	outputPath = base + "." + outputFormat
 
 	img = HandleImageResize(img, cfg)
 	fmt.Println("Image resized, type:", fmt.Sprintf("%T", img))
@@ -33,23 +34,18 @@ func (p *ImageProcessor) SaveImage(img image.Image, outputPath, outputFormat str
 	}
 	fmt.Println("Optimized quality:", bestQuality)
 
-	if outputFormat == "webp" {
-		outputPath = base + ".webp"
-		if err := SaveImageWebP(img, outputPath, bestQuality); err != nil {
-			return err
-		}
-	} else if outputFormat == "jpg" {
-		outputPath = base + ".jpg"
-		if err := ManageExif(img, outputPath, bestQuality); err != nil {
-			return err
-		}
-	} else if outputFormat == "png" {
-		outputPath = base + ".png"
-		if err := SaveImagePNG(img, outputPath); err != nil {
-			return err
-		}
-	} else {
-		return fmt.Errorf("unsupported format: %s", outputFormat)
+	file, err := os.Create(outputPath)
+	if err != nil {
+		return fmt.Errorf("error creating file: %v", err)
+	}
+	defer file.Close()
+
+	encoder, err := GetEncoder(outputFormat)
+	if err != nil {
+		return err
+	}
+	if err := encoder.Encode(img, file, bestQuality); err != nil {
+		return fmt.Errorf("error encoding image: %v", err)
 	}
 
 	fileInfo, err := os.Stat(outputPath)

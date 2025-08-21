@@ -30,7 +30,7 @@ type ImageProcessor struct {
 	Watermark     image.Image
 	OutputDir     string
 	Config        *config.Config
-	WatermarkMode string // "crop" или "resize"
+	WatermarkMode string
 	FileHandler   FileHandler
 }
 
@@ -46,7 +46,7 @@ func NewImageProcessor(watermarkPath string, cfg *config.Config, fileHandler Fil
 		Watermark:     watermark,
 		OutputDir:     "Images_watermarked",
 		Config:        cfg,
-		WatermarkMode: "crop", // По умолчанию, будет перезаписано из GUI
+		WatermarkMode: "crop",
 		FileHandler:   fileHandler,
 	}, nil
 }
@@ -179,12 +179,10 @@ func (p *ImageProcessor) prepareWatermark(img image.Image) image.Image {
 		return imaging.Resize(p.Watermark, imgBounds.Dx(), imgBounds.Dy(), imaging.Lanczos)
 	}
 
-	// По умолчанию режим "crop"
 	if wmBounds.Dx() <= imgBounds.Dx() && wmBounds.Dy() <= imgBounds.Dy() {
 		return imaging.Resize(p.Watermark, imgBounds.Dx(), imgBounds.Dy(), imaging.Lanczos)
 	}
 
-	// Обрезаем центр водяного знака до размеров изображения
 	cropX := (wmBounds.Dx() - imgBounds.Dx()) / 2
 	cropY := (wmBounds.Dy() - imgBounds.Dy()) / 2
 	cropRect := image.Rect(cropX, cropY, cropX+imgBounds.Dx(), cropY+imgBounds.Dy())
