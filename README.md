@@ -3,6 +3,8 @@
 **GoIMGtool** is a lightweight image processing tool that allows resizing images and applying watermarks.
 It supports batch processing, multiple formats, and optimal web image sizes.
 
+[Перейти на русскую версию](#goimgtool-🖼️-русская-версия)
+
 ### Features
 
 * 🔍 **Resize** – Users can choose the output size. Images are only limited by the watermark size.
@@ -99,7 +101,9 @@ docker-compose -f docker-compose.yml up --build
 
 ---
 
-# GoIMGtool 🖼️ (Русская версия)
+# GoIMGtool 🖼️ 
+
+[Перейти на английскую версию](#goimgtool-🖼️)
 
 **GoIMGtool** — инструмент для обработки изображений: изменение размера и наложение водяных знаков.
 Поддерживает пакетную обработку, несколько форматов и оптимальные размеры изображений для веба.
@@ -127,7 +131,7 @@ docker-compose -f docker-compose.yml up --build
 
 ---
 
-## Установка (Native)
+## Установка 
 
 1. Установите Go 1.24.6: [https://golang.org/dl/](https://golang.org/dl/)
 2. Установите MSYS2: [https://www.msys2.org/](https://www.msys2.org/) и выполните:
@@ -153,7 +157,7 @@ docker-compose -f docker-compose.yml up --build
 
 ---
 
-## Использование (Native)
+## Использование 
 
 1. Запустите:
 
