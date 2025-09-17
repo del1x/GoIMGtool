@@ -3,7 +3,7 @@
 **GoIMGtool** is a lightweight image processing tool that allows resizing images and applying watermarks.
 It supports batch processing, multiple formats, and optimal web image sizes.
 
-[Перейти на русскую версию](#goimgtool-🖼️-русская-версия)
+[Перейти на русскую версию](#goimgtool-русская-версия)
 
 ### Features
 
@@ -103,6 +103,7 @@ docker-compose -f docker-compose.yml up --build
 
 # GoIMGtool 🖼️ (Русская версия)
 
+<a name="goimgtool-русская-версия"></a>
 [Перейти на английскую версию](#goimgtool-🖼️)
 
 **GoIMGtool** — инструмент для обработки изображений: изменение размера и наложение водяных знаков.
