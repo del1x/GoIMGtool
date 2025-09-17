@@ -1,5 +1,5 @@
 # GoIMGtool 🖼️
-<a name="goimgtool-"></a>
+<a name="goimgtool"></a>
 
 **GoIMGtool** is a lightweight image processing tool that allows resizing images and applying watermarks.
 It supports batch processing, multiple formats, and optimal web image sizes.
